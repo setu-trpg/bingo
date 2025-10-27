@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ランダムビンゴカードジェネレーター</title>
+    <!-- Tailwind CSS CDNを読み込み -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* フォント設定 */
+        body { font-family: "Inter", "Noto Sans JP", sans-serif; }
+        
+        /* ビンゴボード全体: 白背景で統一 */
+        #bingo-board {
+            background-color: #ffffff;
+            box-shadow: 0 8px 16px -4px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+            padding: 1.5rem;
+            border-radius: 16px;
+        }
+        
+        /* BINGOヘッダー: 水色文字でアクセント */
+        #bingo-header-text {
+            color: #38bdf8; /* 鮮やかな水色 */
+            font-size: 3.5rem;
+            font-weight: 900;
+            text-align: center;
+            margin-bottom: 1.5rem;
+            letter-spacing: 0.2em;
+        }
+
+        /* マス目の基本スタイル */
+        .bingo-cell {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border: 2px solid #a0a0a0; /* 濃い灰色の枠線 */
+            aspect-ratio: 1 / 1; 
+            font-size: 2rem;
+            font-weight: 800;
+            color: #1e3a8a; /* 濃い青色の数字 */
+            background-color: #ffffff; /* 白いマス目 */
+            border-radius: 8px;
+            box-shadow: none;
+            user-select: none; /* テキスト選択防止 */
+        }
+
+        /* 中央のFREEマス */
+        #cell-C3 {
+            background-color: #ffffff;
+            color: #38bdf8; /* 水色の文字 */
+            font-size: 2.5rem;
+            font-weight: 900;
+            border: 2px solid #38bdf8; /* 水色の枠線 */
+            text-shadow: none;
+        }
+
+        /* コントロールボタンのスタイル */
+        button {
+            box-shadow: 0 2px 4px -1px rgba(0,0,0,0.1), 0 1px 2px -1px rgba(0, 0, 0, 0.06);
+            transition: transform 0.15s ease-in-out, background-color 0.15s ease-in-out;
+        }
+
+        /* 画像保存用アニメーション */
+        @keyframes pulse {
+            0% { transform: scale(1); opacity: 1; }
+            50% { transform: scale(1.05); opacity: 0.8; }
+            100% { transform: scale(1); opacity: 1; }
+        }
+        .animate-pulse-save {
+            animation: pulse 1s infinite;
+        }
+    </style>
+</head>
+<body class="bg-blue-100 min-h-screen p-4 sm:p-8 flex flex-col items-center">
+
+    <!-- メインコンテナ -->
+    <div class="w-full max-w-xl">
+
+        <!-- ビンゴボード (画像保存対象) -->
+        <div id="bingo-board" class="shadow-lg transition duration-300 transform">
+            
+            <!-- BINGOヘッダーテキスト -->
+            <div id="bingo-header-text">BINGO</div>
+
+            <div id="grid-container" class="grid grid-cols-5 gap-2 sm:gap-3">
+                <!-- マス目はJavaScriptによって挿入されます -->
+            </div>
+        </div>
+
+        <!-- コントロールパネル -->
+        <div class="mt-8 flex flex-col sm:flex-row space-y-4 sm:space-y-0 sm:space-x-4">
+            
+            <!-- 再生成ボタン -->
+            <button id="generate-button" class="w-full sm:w-1/2 p-3 text-white font-semibold rounded-lg transition duration-150 transform hover:scale-105 bg-sky-500 hover:bg-sky-600">
+                新しいカードを生成
+            </button>
+
+            <!-- 画像保存ボタン -->
+            <button id="save-button" class="w-full sm:w-1/2 p-3 text-white font-semibold rounded-lg transition duration-150 transform hover:scale-105 bg-blue-800 hover:bg-blue-900 flex items-center justify-center">
+                画像を保存 (PNG)
+            </button>
+        </div>
+
+        <!-- メッセージエリア -->
+        <div id="message-area" class="mt-4 text-center text-sm font-medium text-gray-600 min-h-[1.5rem]">
+            カードの生成と画像保存が可能です。
+        </div>
+
+        <!-- HTML2Canvas CDNを読み込み (画像保存に使用) -->
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+
+        <script>
+            // 定数とDOM要素の取得
+            const totalCells = 25;
+            const freeCellIndex = 12; // 0から24で数えて12番目 (C3)
+            const gridContainer = document.getElementById('grid-container');
+            const generateButton = document.getElementById('generate-button');
+            const saveButton = document.getElementById('save-button');
+            const messageArea = document.getElementById('message-area');
+            
+            /**
+             * 1から100までの数字から、重複しないランダムな24個の数字を生成する。
+             * @returns {number[]} 24個の重複しないランダムな数字の配列。
+             */
+            function generateRandomNumbers() {
+                const numbers = Array.from({ length: 100 }, (_, i) => i + 1);
+                
+                // Fisher-Yates (Knuth) shuffleアルゴリズムでシャッフル
+                for (let i = numbers.length - 1; i > 0; i--) {
+                    const j = Math.floor(Math.random() * (i + 1));
+                    [numbers[i], numbers[j]] = [numbers[j], numbers[i]];
+                }
+                
+                // 最初の24個を抽出
+                return numbers.slice(0, 24);
+            }
+
+            /**
+             * ビンゴボードのHTML要素を生成し、表示を更新する。
+             */
+            function renderBingoBoard() {
+                // 1. 24個のランダムな数字を取得
+                const randomNumbers = generateRandomNumbers();
+                let numberIndex = 0;
+                
+                // 2. グリッドコンテナを空にする
+                gridContainer.innerHTML = '';
+
+                // 3. 25マスを生成
+                for (let i = 0; i < totalCells; i++) {
+                    const cell = document.createElement('div');
+                    cell.classList.add('bingo-cell', 'rounded-lg');
+                    
+                    let cellContent;
+
+                    if (i === freeCellIndex) {
+                        // 中央のFREEマス
+                        cellContent = 'Free';
+                        cell.id = 'cell-C3';
+                    } else {
+                        // ランダムな数字マス
+                        cellContent = randomNumbers[numberIndex++].toString();
+                    }
+
+                    cell.textContent = cellContent;
+                    gridContainer.appendChild(cell);
+                }
+
+                messageArea.textContent = '新しいビンゴカードが生成されました！';
+            }
+
+            /**
+             * ビンゴボード全体をPNG画像として保存する。
+             */
+            async function saveAsImage() {
+                try {
+                    messageArea.textContent = '画像を準備中です...しばらくお待ちください。';
+                    
+                    // アニメーションを追加して処理中であることを示す
+                    const originalText = saveButton.innerHTML;
+                    saveButton.innerHTML = '<span class="animate-pulse-save">保存中...</span>';
+                    saveButton.disabled = true;
+
+                    // html2canvasを使用してビンゴボード要素をキャンバスに変換
+                    const canvas = await html2canvas(document.getElementById('bingo-board'), {
+                        scale: 3, // 高解像度でキャプチャ
+                        useCORS: true,
+                        backgroundColor: '#ffffff', // ビンゴボードの背景色を白に指定
+                    });
+
+                    // ダウンロード処理
+                    const imageURL = canvas.toDataURL('image/png');
+                    const link = document.createElement('a');
+                    link.href = imageURL;
+                    link.download = `bingo_card_${Date.now()}.png`;
+                    document.body.appendChild(link);
+                    link.click();
+                    document.body.removeChild(link);
+
+                    messageArea.textContent = 'ビンゴカードの画像を保存しました！';
+
+                } catch (error) {
+                    console.error('画像保存エラー:', error);
+                    messageArea.textContent = '画像保存中にエラーが発生しました。コンソールを確認してください。';
+                } finally {
+                    // ボタンの状態を元に戻す
+                    saveButton.innerHTML = originalText;
+                    saveButton.disabled = false;
+                }
+            }
+
+            // イベントリスナーの設定
+            generateButton.addEventListener('click', renderBingoBoard);
+            saveButton.addEventListener('click', saveAsImage);
+
+            // ページロード時に最初のカードを生成
+            window.onload = renderBingoBoard;
+
+        </script>
+    </div>
+
+</body>
+</html>
