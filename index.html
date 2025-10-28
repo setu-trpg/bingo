@@ -186,12 +186,28 @@
                     saveButton.innerHTML = '<span class="animate-pulse-save">保存中...</span>';
                     saveButton.disabled = true;
 
+                    const bingoBoard = document.getElementById('bingo-board');
+                    
+                    // --- レイアウト安定化のための修正 ---
+                    // 元のスタイルを保存し、一時的に固定幅を設定する
+                    const originalStyle = bingoBoard.style.cssText;
+                    const fixedSize = '500px'; 
+                    
+                    // 画像保存時にレイアウトが崩れないように固定幅を適用
+                    bingoBoard.style.width = fixedSize;
+                    bingoBoard.style.height = 'auto'; 
+                    // --- 修正終わり ---
+
                     // html2canvasを使用してビンゴボード要素をキャンバスに変換
-                    const canvas = await html2canvas(document.getElementById('bingo-board'), {
+                    const canvas = await html2canvas(bingoBoard, {
                         scale: 3, // 高解像度でキャプチャ
                         useCORS: true,
                         backgroundColor: '#ffffff', // ビンゴボードの背景色を白に指定
                     });
+
+                    // --- 元のスタイルに戻す ---
+                    bingoBoard.style.cssText = originalStyle;
+                    // --- 修正終わり ---
 
                     // ダウンロード処理
                     const imageURL = canvas.toDataURL('image/png');
